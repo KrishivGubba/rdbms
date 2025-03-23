@@ -1,7 +1,4 @@
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 
 
 public class StorageEngine {
@@ -79,9 +76,81 @@ public class StorageEngine {
     return true;
   }
 
+  private int allocatePage() throws IOException {
+    if (!isValid)
+      throw new InvalidObjectException("This file is not a valid type.");
+    //go to read the number of pages and increment
+    this.fileObject.seek(8);
+    this.fileObject.writeInt(this.numPages + 1);
+    this.numPages += 1;
+    //go to new page location
+    int offset = 16 + this.pageSize * numPages;
+    this.fileObject.seek(offset);
+    //write placeholder data
+    byte[] buffer = new byte[this.pageSize];
+    this.fileObject.write(buffer);
+    //return index of new page
+    return this.numPages - 1;
+  }
+
+  private byte[] readPage(int id) throws IndexOutOfBoundsException, IOException {
+    if (!isValid)
+      throw new InvalidObjectException("This file is not a valid type.");
+    if (id >= this.numPages || id < 0){
+      throw new IndexOutOfBoundsException("Index goes beyond the number of pages");
+    }
+    int offset = 16 + id*this.pageSize;
+    byte[] readMem = new byte[this.pageSize];
+    this.fileObject.seek(offset);
+    int output  = this.fileObject.read(readMem);
+    return readMem;
+  }
+
+  private void writePage(byte[] toDisk) throws IOException {
+    writePage(toDisk, this.numPages - 1); //appends to the end
+  }
+
+
+  /**
+   * WARNING: this OVERWRITES any existing data.
+   * @param toDisk: bytes arr that should be written to disk from memory
+   * @param id
+   * @return
+   */
+  private void writePage(byte[] toDisk, int id) throws IOException {
+    //check to see len of arr matches pagesize
+    if (toDisk.length > this.pageSize)
+      throw new IndexOutOfBoundsException("The bytes array is too large to be written");
+    if (id >= this.numPages || id < 0){
+      throw new IndexOutOfBoundsException("Index goes beyond the number of pages");
+    }
+    int offset = 16 + this.pageSize * id;
+    if (toDisk.length < this.pageSize){
+      byte[] rightSize = new byte[this.pageSize];
+      System.arraycopy(toDisk, 0, rightSize, 0, toDisk.length);
+      toDisk = rightSize;
+    }
+    this.fileObject.seek(offset);
+    this.fileObject.write(toDisk);
+  }
+
   public static void main(String[] args) throws IOException {
 //    StorageEngine thing = new St  orageEngine("hi");
     StorageEngine thing = new StorageEngine("randomdb");
-    System.out.println(thing.MAGICNUM);
+//    int id = thing.allocatePage();
+//    System.out.println(id);
+//    System.out.println(thing.numPages);
+    byte[] inMemory = new byte[5];
+//    System.out.println(inMemory.length);
+//    for (byte an: inMemory){
+//      System.out.println(an);
+//    }
+    byte wr = 1;
+    inMemory[2] = wr;
+    thing.writePage(inMemory, 0);
+    byte[] read = thing.readPage(0);
+    for (byte readthis: read){
+      System.out.println(readthis);
+    }
   }
 }
