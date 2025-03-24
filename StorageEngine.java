@@ -46,7 +46,7 @@ public class StorageEngine {
     }
   }
 
-  private boolean readMetaData() throws IOException {
+  public boolean readMetaData() throws IOException {
     this.fileObject.seek(0);
 
     //read the magic num
@@ -69,7 +69,7 @@ public class StorageEngine {
     return true;
   }
 
-  private boolean addMetaData() throws IOException {
+  public boolean addMetaData() throws IOException {
     try{
       this.fileObject.seek(0);
 
@@ -97,7 +97,7 @@ public class StorageEngine {
     return true;
   }
 
-  private int allocatePage() throws IOException {
+  public int allocatePage() throws IOException {
     if (!isValid)
       throw new InvalidObjectException("This file is not a valid type.");
     //go to read the number of pages and increment
@@ -147,7 +147,7 @@ public class StorageEngine {
     return METADATA_CAPACITY + id*this.pageSize; //hardcode header size here.
   }
 
-  private byte[] readPage(int id) throws IndexOutOfBoundsException, IOException {
+  public byte[] readPage(int id) throws IndexOutOfBoundsException, IOException {
     if (!isValid)
       throw new InvalidObjectException("This file is not a valid type.");
     if (id >= this.numPages || id < 0){
@@ -160,7 +160,7 @@ public class StorageEngine {
     return readMem;
   }
 
-  private void writePage(byte[] toDisk) throws IOException {
+  public void writePage(byte[] toDisk) throws IOException {
     if (!this.isValid)
       throw new InvalidObjectException("This is not a valid file type");
     writePage(toDisk, this.numPages - 1); //appends to the end
@@ -173,7 +173,7 @@ public class StorageEngine {
    * @param id
    * @return
    */
-  private void writePage(byte[] toDisk, int id) throws IOException {
+  public void writePage(byte[] toDisk, int id) throws IOException {
     //check to see len of arr matches pagesize
     if (!isValid){
       throw new InvalidObjectException("This is not a valid file type");
