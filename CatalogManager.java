@@ -1,9 +1,11 @@
 import javax.accessibility.AccessibleAction;
 import java.io.IOException;
+import java.io.InvalidObjectException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
 import java.security.KeyException;
-import java.util.Arrays;
+import java.util.*;
 
 public class CatalogManager {
 
@@ -16,6 +18,7 @@ public class CatalogManager {
   public int numTables;
   public int tableOffset;
   public int versionInfo;
+  private Map<Integer, tableItem> tableMap;
 
   public CatalogManager(LRU lru) throws IOException, KeyException {
     buffer = lru;
@@ -27,6 +30,12 @@ public class CatalogManager {
     numTables = reader.getInt();
     tableOffset = reader.getInt();
     versionInfo = reader.getInt();
+    tableMap = new HashMap<>();
+    for (int i = 0; i < numTables; i++)
+      tableMap.put(i, tableInfoGetter(i));
+
+//    System.out.println("these are the ids");
+//    System.out.println(tableMap.keySet());
 
     buffer.put(0, adminPage);
 
@@ -59,7 +68,6 @@ public class CatalogManager {
     // table info
     // generate a table id
     writer.putInt(start, numTables + 1);
-
     // write table name
     byte[] stringToByte = stringToBytes(tablename);
     writer.position(start + 4);
@@ -165,7 +173,7 @@ public class CatalogManager {
   }
 
 
-  public String tableInfoGetter(int id) throws IOException, KeyException {
+  public tableItem tableInfoGetter(int id) throws IOException, KeyException {
     if (id >= numTables || id < 0)
       throw new IndexOutOfBoundsException("Wrong id");
     int start = 20 + id * 179;
@@ -177,55 +185,54 @@ public class CatalogManager {
     return tableInfoHelper(slicedArray);
   }
 
-  private String tableInfoHelper(byte[] tableBytes) {
+  private tableItem tableInfoHelper(byte[] tableBytes) {
     ByteBuffer buffer = ByteBuffer.wrap(tableBytes);
     StringBuilder result = new StringBuilder();
-
+    HashMap<String, Object> tableInfo = new HashMap<>();
+    tableItem table = new tableItem();
     int tableId = buffer.getInt(0);
-
+    tableInfo.put("tableId", tableId);
+    table.tableId = tableId;
     byte[] nameBytes = new byte[32];
     buffer.position(4);
     buffer.get(nameBytes);
     String tableName = bytesToString(nameBytes);
+    tableInfo.put("tableName", tableName);
+    table.tableName = tableName;
 
     byte activeFlag = buffer.get(36);
-
+    tableInfo.put("active", activeFlag == 1);
+    table.active = activeFlag == 1;
     int numColumns = buffer.getInt(37);
+    tableInfo.put("numColumns", numColumns);
+    table.numColumns = numColumns;
+
     int numRows = buffer.getInt(41);
+    tableInfo.put("numRows", numRows);
+    table.numRows = numRows;
 
     int[] pageIds = new int[10];
     buffer.position(45);
     for (int i = 0; i < 10; i++) {
       pageIds[i] = buffer.getInt();
     }
+    tableInfo.put("pageIds", pageIds);
+    table.pageIds = pageIds;
 
     int numPages = buffer.getInt(85);
+    tableInfo.put("numPages", numPages);
+    table.numPages = numPages;
 
-    result.append("===== TABLE INFORMATION =====\n");
-    result.append("Table ID: ").append(tableId).append("\n");
-    result.append("Table Name: ").append(tableName).append("\n");
-    result.append("Active: ").append(activeFlag == 1 ? "Yes" : "No").append("\n");
-    result.append("Number of Columns: ").append(numColumns).append("\n");
-    result.append("Number of Rows: ").append(numRows).append("\n");
-    result.append("Number of Pages: ").append(numPages).append("\n");
-
-    result.append("\n--- Page IDs ---\n");
-    for (int i = 0; i < 10; i++) {
-      if (pageIds[i] != -1) {
-        result.append("Page ").append(i).append(": ").append(pageIds[i]).append("\n");
-      }
-    }
-
-    result.append("\n--- Schema Information ---\n");
-    result.append("Column Name                Type       Constraints\n");
-    result.append("----------------------------------------\n");
-
+    ArrayList<HashMap<String, String>> columns = new ArrayList<>();
     int schemaStart = 89;
     for (int i = 0; i < numColumns; i++) {
+      HashMap<String, String> column = new HashMap<>();
+
       byte[] colNameBytes = new byte[16];
       buffer.position(schemaStart + (i * 18));
       buffer.get(colNameBytes);
       String colName = bytesToString(colNameBytes);
+      column.put("name", colName);
 
       byte typeCode = buffer.get(schemaStart + (i * 18) + 16);
       String dataType = "UNKNOWN";
@@ -245,15 +252,64 @@ public class CatalogManager {
         default:
           dataType = "UNKNOWN";
       }
+      column.put("type", dataType);
+      column.put("typeCode", Integer.toString(typeCode));
 
-      byte constraints = buffer.get(schemaStart + (i * 18) + 17);
-      String constraintStr = constraints == 0 ? "None" : "Constraint(" + constraints + ")";
+//      byte constraints = buffer.get(schemaStart + (i * 18) + 17); TODO: fix this later, we're ignoring contstraints fornow
+      column.put("constraints", "noconstraints");
+
+      columns.add(column);
+    }
+    tableInfo.put("columns", columns);
+    table.columns = columns;
+    // Build the string representation as before
+    result.append("===== TABLE INFORMATION =====\n");
+    result.append("Table ID: ").append(tableId).append("\n");
+    result.append("Table Name: ").append(tableName).append("\n");
+    result.append("Active: ").append(activeFlag == 1 ? "Yes" : "No").append("\n");
+    result.append("Number of Columns: ").append(numColumns).append("\n");
+    result.append("Number of Rows: ").append(numRows).append("\n");
+    result.append("Number of Pages: ").append(numPages).append("\n");
+
+    result.append("\n--- Page IDs ---\n");
+    for (int i = 0; i < 10; i++) {
+      if (pageIds[i] != -1) {
+        result.append("Page ").append(i).append(": ").append(pageIds[i]).append("\n");
+      }
+    }
+
+    result.append("\n--- Schema Information ---\n");
+    result.append("Column Name                Type       Constraints\n");
+    result.append("----------------------------------------\n");
+
+    for (HashMap<String, String> column : columns) {
+      String colName = (String) column.get("name");
+      String dataType = (String) column.get("type");
+      String constraints = column.get("constraints");
+      String constraintStr = true ? "None" : "Constraint(" + constraints + ")";
 
       result.append(String.format("%-25s %-10s %s%n", colName, dataType, constraintStr));
     }
 
     result.append("===== END TABLE INFORMATION =====\n");
-    return result.toString();
+
+    tableInfo.put("infoString", result.toString());
+    table.infoString = result.toString();
+    return table;
+  }
+
+//  [numPages, pageIds, infoString, numRows, columns, tableId, active, numColumns, tableName]
+  public void insertRow(int tableId, Map<String, Object> values) throws InvalidKeyException, InvalidObjectException {
+    if (!tableMap.containsKey(tableId))
+      throw new InvalidKeyException("Invalid table id");
+    //make checks first
+    tableItem tableInfo = tableMap.get(tableId);
+    if (values.size() != tableInfo.numColumns)
+      throw new InvalidObjectException("Wrong number of values passed in");
+
+//    tableInfo.get("columns")[0];
+    System.out.println(tableInfo.columns);
+
   }
 
 
@@ -268,9 +324,14 @@ public class CatalogManager {
     CatalogManager cat = new CatalogManager(buffer);
 
 //    cat.addTable("random", "id:INT,name:STRING,age:INT,salary:FLOAT,active:BOOLEAN");
-
-    System.out.println(cat.tableInfoGetter(2));
-
+    Map<String, Object> thing = new HashMap<>();
+    thing.put("s", 1);
+    thing.put("sa", 1);
+    thing.put("ss", 1);
+    thing.put("f", 1);
+    thing.put("a", 1);
+//    System.out.println(cat.tableInfoGetter(1).keySet());
+    cat.insertRow(1, thing);
     cat.close();
   }
 }
