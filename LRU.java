@@ -8,7 +8,7 @@ import java.util.Set;
 public class LRU {
 
   private LinkedHashMap<Integer, byte[]> hmap;
-  private StorageEngine engine;
+  public StorageEngine engine;
   private Set<Integer> dirtyKeys;
 
   private int capacity;
@@ -32,6 +32,7 @@ public class LRU {
   }
 
   public void put(int key, byte[] value) throws KeyException, IOException {
+    System.out.println(hmap.keySet());
     if (hmap.containsKey(key))
       dirtyKeys.add(key);
     hmap.put(key, value);

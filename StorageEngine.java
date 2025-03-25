@@ -1,4 +1,5 @@
 import java.io.*;
+import java.nio.ByteBuffer;
 
 
 public class StorageEngine {
@@ -7,6 +8,7 @@ public class StorageEngine {
   private final int MAGICNUM = 0xDB0023FF;
   private final int FREE_PAGE_CAPACITY = 10;
 
+  private final int NUM_ADMIN_PAGES = 1;
   private final int METADATA_CAPACITY = 60;
 
   private String filename;
@@ -40,10 +42,26 @@ public class StorageEngine {
       }
     }else{ //here you're ADDING metadata (file's already been created for you)
       boolean success = addMetaData();
+      //now add the admin pages
+      for (int i = 0; i < NUM_ADMIN_PAGES; i++){
+        allocatePage();
+      }
+      fillAdmin();
       if (!success)
         throw new IOException("Was not able to load metadata.");
       System.out.println("Metadata exists");
     }
+  }
+
+  private void fillAdmin() throws IOException {
+    byte[] adminPage = readPage(0);
+    ByteBuffer buffer = ByteBuffer.wrap(adminPage);
+    buffer.putInt(0, 0); //number of tables
+    buffer.putInt(4, -1); // offset for table ID
+    buffer.putInt(8, 1); // version info
+    buffer.putInt(12, 0); //empty space
+
+    writePage(adminPage, 0);
   }
 
   public boolean readMetaData() throws IOException {
