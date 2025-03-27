@@ -162,6 +162,8 @@ public class StorageEngine {
   }
 
   private int getOffset(int id){
+    int x = METADATA_CAPACITY + id*pageSize;
+    System.out.println(x);
     return METADATA_CAPACITY + id*this.pageSize; //hardcode header size here.
   }
 
@@ -208,6 +210,10 @@ public class StorageEngine {
       toDisk = rightSize;
     }
     this.fileObject.seek(offset);
+    ByteBuffer checker = ByteBuffer.wrap(toDisk);
+    checker.position(61);
+    System.out.println("this that tint");
+    System.out.println(checker.getInt());
     this.fileObject.write(toDisk);
   }
 

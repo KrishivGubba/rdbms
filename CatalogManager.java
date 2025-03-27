@@ -1,4 +1,6 @@
 import javax.accessibility.AccessibleAction;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InvalidObjectException;
 import java.nio.ByteBuffer;
@@ -34,6 +36,10 @@ public class CatalogManager {
     for (int i = 0; i < numTables; i++)
       tableMap.put(i, tableInfoGetter(i));
 
+    reader.position(65);
+    System.out.println(reader.getInt());
+    System.out.println(reader.getInt());
+    System.out.println(reader.getInt());
 //    System.out.println("these are the ids");
 //    System.out.println(tableMap.keySet());
 
@@ -67,7 +73,7 @@ public class CatalogManager {
 
     // table info
     // generate a table id
-    writer.putInt(start, numTables + 1);
+    writer.putInt(start, numTables);
     // write table name
     byte[] stringToByte = stringToBytes(tablename);
     writer.position(start + 4);
@@ -299,19 +305,338 @@ public class CatalogManager {
   }
 
 //  [numPages, pageIds, infoString, numRows, columns, tableId, active, numColumns, tableName]
-  public void insertRow(int tableId, Map<String, Object> values) throws InvalidKeyException, InvalidObjectException {
+  public void insertRow(int tableId, Map<String, Object> values) throws KeyException, IOException {
     if (!tableMap.containsKey(tableId))
       throw new InvalidKeyException("Invalid table id");
+
     //make checks first
     tableItem tableInfo = tableMap.get(tableId);
     if (values.size() != tableInfo.numColumns)
       throw new InvalidObjectException("Wrong number of values passed in");
 
-//    tableInfo.get("columns")[0];
+    //match cols
+    for (HashMap<String, String> col : tableInfo.columns)
+      if (!values.containsKey(col.get("name")))
+        throw new InvalidKeyException("You did not pass in all the column values");
+
+    System.out.println(tableInfo.pageIds[0]);
+    int latestPage = -1;
+    int latestIdx = -1;
+    for (int i = 0 ; i < tableInfo.pageIds.length; i++){
+      if (tableInfo.pageIds[i] != -1){
+        latestPage = tableInfo.pageIds[i];
+        latestIdx = i;
+      }
+    }
+    //check the -1th page id
+    if (tableInfo.pageIds[0]==-1 || !canAccommodate(tableInfo.pageIds[latestIdx], values, tableInfo.columns)) {
+      // Allocate a new page
+      int newPage = buffer.engine.allocatePage();
+      byte[] page = buffer.get(newPage);
+      byte[] adminPage = buffer.get(0);
+
+      // Find the table in the admin page by table id
+      int tableOffset = -1;
+      for (int i = 0; i < NUM_TABLES_CAPACITY; i++) {
+        int offset = 20 + i * 179;
+        ByteBuffer reader = ByteBuffer.wrap(adminPage);
+        int currId = reader.getInt(offset);
+        if (currId == tableId) {
+          tableOffset = offset;
+          break;
+        }
+      }
+
+      if (tableOffset == -1) {
+        throw new InvalidKeyException("Table ID not found in admin page");
+      }
+
+      // Increment number of rows counter
+      ByteBuffer adminBuffer = ByteBuffer.wrap(adminPage);
+      int currentRows = adminBuffer.getInt(tableOffset + 41);
+      adminBuffer.putInt(tableOffset + 41, currentRows + 1);
+
+      // Increment number of pages counter
+      int currentPages = adminBuffer.getInt(tableOffset + 85);
+      adminBuffer.putInt(tableOffset + 85, currentPages + 1);
+
+      // Add the page id to the page id array in the admin page
+      // The page IDs start at offset 45
+      adminBuffer.putInt(tableOffset + 45 + (currentPages * 4), newPage);
+
+      // Update table info in memory
+      tableInfo.pageIds[tableInfo.numPages] = newPage;
+      tableInfo.numPages += 1;
+      tableInfo.numRows += 1;
+
+
+      // Initialize new page as a data page
+      ByteBuffer pageBuffer = ByteBuffer.wrap(page);
+
+      // Set number of records to 1
+      pageBuffer.putInt(0, 1);
+
+      // Set free space pointer to 16 (after record count, free space ptr, and first slot entry)
+      pageBuffer.putInt(4, 16);
+
+      // Convert values to byte array
+      byte[] recordData = recordToBytes(values, tableInfo.columns);
+      int recordLength = recordData.length;
+
+      // Calculate offset for record (at end of page)
+      int recordOffset = 4096 - recordLength;
+
+      // Write the record at the calculated offset
+      pageBuffer.position(recordOffset);
+      pageBuffer.put(recordData);
+
+      // Create slot entry (first slot)
+      // Offset to record
+      pageBuffer.putInt(8, recordOffset);
+      // Length of record
+      pageBuffer.putInt(12, recordLength);
+
+      // Write pages back to buffer
+      ByteBuffer checkme = ByteBuffer.wrap(adminPage);
+      checkme.position(tableOffset + 41);
+      System.out.println("time");
+      System.out.println(tableOffset + 41);
+      ByteBuffer watch = ByteBuffer.wrap(adminPage);
+      watch.position(tableOffset + 41);
+      System.out.println(watch.getInt());
+      buffer.put(newPage, page);
+      buffer.put(0, adminPage);
+
+      adminBuffer.position(41 + tableOffset);
+      int ro = adminBuffer.getInt();
+      System.out.println(tableOffset);
+      System.out.println("here");
+      System.out.println(ro);
+    } else {
+      // Code for adding to existing page will go here
+      byte[] adminPage = buffer.get(0);
+
+      // Find the table in the admin page by table id
+      int tableOffset = -1;
+      for (int i = 0; i < NUM_TABLES_CAPACITY; i++) {
+        int offset = 20 + i * 179;
+        ByteBuffer reader = ByteBuffer.wrap(adminPage);
+        int currId = reader.getInt(offset);
+        if (currId == tableId) {
+          tableOffset = offset;
+          break;
+        }
+      }
+
+      if (tableOffset == -1) {
+        throw new InvalidKeyException("Table ID not found in admin page");
+      }
+
+      // Increment number of rows counter in admin page
+      ByteBuffer adminBuffer = ByteBuffer.wrap(adminPage);
+      int currentRows = adminBuffer.getInt(tableOffset + 41);
+      adminBuffer.putInt(tableOffset + 41, currentRows + 1);
+
+      // Update table info in memory - rows only, not pages since we're using existing page
+      tableInfo.numRows += 1;
+
+      // Get the existing page
+      byte[] page = buffer.get(latestPage);
+      ByteBuffer pageBuffer = ByteBuffer.wrap(page);
+
+      // Get current record count and increment
+      int recordCount = pageBuffer.getInt(0);
+      pageBuffer.putInt(0, recordCount + 1);
+
+      // Get the current free space pointer
+      int freeSpacePtr = pageBuffer.getInt(4);
+
+      // Convert values to byte array
+      byte[] recordData = recordToBytes(values, tableInfo.columns);
+      int recordLength = recordData.length;
+
+      // Calculate offset for new record (at end of page if first record, or before previous record)
+      int oldestRecordOffset = 4096;
+      for (int i = 0; i < recordCount; i++) {
+        int slotOffset = 8 + (i * 8);
+        int recOffset = pageBuffer.getInt(slotOffset);
+        if (recOffset < oldestRecordOffset) {
+          oldestRecordOffset = recOffset;
+        }
+      }
+      int recordOffset = oldestRecordOffset - recordLength;
+
+      // Check if we have enough space
+      if (freeSpacePtr > recordOffset) {
+        throw new IOException("Page is full, cannot add more records");
+      }
+
+      // Write the record at the calculated offset
+      pageBuffer.position(recordOffset);
+      pageBuffer.put(recordData);
+
+      // Add slot entry for the new record
+      pageBuffer.putInt(freeSpacePtr, recordOffset);     // Offset to record
+      pageBuffer.putInt(freeSpacePtr + 4, recordLength); // Length of record
+
+      // Update free space pointer to include the new slot entry
+      pageBuffer.putInt(4, freeSpacePtr + 8);
+
+      // Write pages back to buffer
+      buffer.put(latestPage, page);
+      buffer.put(0, adminPage);
+
+    }
+
+
     System.out.println(tableInfo.columns);
+    System.out.println(tableMap.get(tableId).numRows);
 
   }
 
+  private byte[] recordToBytes(Map<String, Object> values, ArrayList<HashMap<String, String>> columns) {
+    // Initialize a ByteArrayOutputStream to build our record
+    ByteArrayOutputStream recordStream = new ByteArrayOutputStream();
+    DataOutputStream dataStream = new DataOutputStream(recordStream);
+
+    try {
+      // Write record header (status byte - 1 means active)
+      dataStream.writeByte(1);
+
+      // Write each field according to its type
+      for (HashMap<String, String> column : columns) {
+        String colName = column.get("name");
+        String type = column.get("type");
+        Object value = values.get(colName);
+
+        switch (type) {
+          case "INT":
+            if (value instanceof Integer) {
+              dataStream.writeInt((Integer) value);
+            } else {
+              dataStream.writeInt(Integer.parseInt(value.toString()));
+            }
+            break;
+
+          case "FLOAT":
+            if (value instanceof Float) {
+              dataStream.writeFloat((Float) value);
+            } else if (value instanceof Double) {
+              dataStream.writeFloat(((Double) value).floatValue());
+            } else {
+              dataStream.writeFloat(Float.parseFloat(value.toString()));
+            }
+            break;
+
+          case "BOOLEAN":
+            if (value instanceof Boolean) {
+              dataStream.writeBoolean((Boolean) value);
+            } else {
+              dataStream.writeBoolean(Boolean.parseBoolean(value.toString()));
+            }
+            break;
+
+          case "STRING":
+          default:
+            // For strings, write length prefix followed by UTF-8 bytes
+            byte[] strBytes = value.toString().getBytes(StandardCharsets.UTF_8);
+            dataStream.writeInt(strBytes.length);
+            dataStream.write(strBytes);
+            break;
+        }
+      }
+
+      return recordStream.toByteArray();
+    } catch (IOException e) {
+      // This shouldn't happen with ByteArrayOutputStream
+      throw new RuntimeException("Error serializing record", e);
+    }
+  }
+
+  private boolean canAccommodate(int pageId, Map<String, Object> values, ArrayList<HashMap<String, String>> columnInfo) throws IOException, KeyException {
+    // pull the page
+    byte[] page = buffer.get(pageId);
+    ByteBuffer pageBuffer = ByteBuffer.wrap(page);
+
+    int recordCount = pageBuffer.getInt(0);
+    int freeSpacePtr = pageBuffer.getInt(4);
+
+    //  size of the new record
+    byte[] potentialRecord = recordToBytes(values, columnInfo);
+    int recordSize = potentialRecord.length;
+
+    // Calculate size needed for slot entry (8 bytes)
+    int slotSize = 8;
+
+    // Find the start of record data (end of page - size of first record)
+    int oldestRecordOffset = 4096;
+    for (int i = 0; i < recordCount; i++) {
+      int slotOffset = 8 + (i * 8);
+      int recOffset = pageBuffer.getInt(slotOffset);
+      if (recOffset < oldestRecordOffset) {
+        oldestRecordOffset = recOffset;
+      }
+    }
+
+    // Calculate where the new record would go
+    int newRecordOffset = oldestRecordOffset - recordSize;
+
+    // Check if there's enough space between free space pointer and record data
+    int newFreeSpacePtr = freeSpacePtr + slotSize;
+
+    return newFreeSpacePtr <= newRecordOffset;
+  }
+
+
+  //TODO: this is not a robust method and ONLY works for the table structure given in the main method
+  // do NOT use for prod purposes.
+  public void printRows(int pageId) throws IOException, KeyException {
+    byte[] page = buffer.get(pageId);
+    ByteBuffer buf = ByteBuffer.wrap(page);
+
+    int recordCount = buf.getInt(0);
+    System.out.println("Page " + pageId + " has " + recordCount + " records");
+
+    for (int i = 0; i < recordCount; i++) {
+      int slotOffset = 8 + (i * 8);
+      int recordOffset = buf.getInt(slotOffset);
+      int recordLength = buf.getInt(slotOffset + 4);
+
+      System.out.println("Record #" + i + " (offset=" + recordOffset + ", length=" + recordLength + ")");
+
+      byte[] recordData = new byte[recordLength];
+      System.arraycopy(page, recordOffset, recordData, 0, recordLength);
+      ByteBuffer reader = ByteBuffer.wrap(recordData);
+
+      // Skip status byte
+      reader.get();
+
+      // Read id (INT)
+      int id = reader.getInt();
+      System.out.println("id: " + id);
+
+      // Read name (STRING)
+      int nameLength = reader.getInt();
+      byte[] nameBytes = new byte[nameLength];
+      reader.get(nameBytes);
+      String name = new String(nameBytes, StandardCharsets.UTF_8);
+      System.out.println("name: \"" + name + "\"");
+
+      // Read age (INT)
+      int age = reader.getInt();
+      System.out.println("age: " + age);
+
+      // Read salary (assuming FLOAT based on your code)
+      float salary = reader.getFloat();
+      System.out.println("salary: " + salary);
+
+      // Read active (BOOLEAN)
+      boolean active = reader.get() != 0;
+      System.out.println("active: " + active);
+
+      System.out.println("\n");
+    }
+  }
 
   public void close() throws IOException {
     buffer.flushAll();
@@ -319,19 +644,23 @@ public class CatalogManager {
   }
 
   public static void main(String[] args) throws IOException, KeyException {
-    StorageEngine engine = new StorageEngine("testing");
-    LRU buffer = new LRU(10, engine);
-    CatalogManager cat = new CatalogManager(buffer);
-
+//    StorageEngine engine = new StorageEngine("ration");
+//    LRU buffer = new LRU(10, engine);
+//    CatalogManager cat = new CatalogManager(buffer);
 //    cat.addTable("random", "id:INT,name:STRING,age:INT,salary:FLOAT,active:BOOLEAN");
-    Map<String, Object> thing = new HashMap<>();
-    thing.put("s", 1);
-    thing.put("sa", 1);
-    thing.put("ss", 1);
-    thing.put("f", 1);
-    thing.put("a", 1);
+//    Map<String, Object> thing = new HashMap<>();
+//    thing.put("id",  11111);
+//    thing.put("name", "person");
+//    thing.put("age", 33);
+//    thing.put("salary",  110123);
+//    thing.put("active", false);
 //    System.out.println(cat.tableInfoGetter(1).keySet());
-    cat.insertRow(1, thing);
-    cat.close();
+//    cat.insertRow(1, thing);
+//    System.out.println("hi");
+//    cat.printRows(2);
+//    System.out.println(cat.tableMap.get(0).numRows);
+//    for (int wat : cat.tableMap.get(0).pageIds)
+//      System.out.println(wat);
+//    cat.close();
   }
 }

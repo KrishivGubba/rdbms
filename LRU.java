@@ -1,5 +1,6 @@
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.security.KeyException;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -35,6 +36,10 @@ public class LRU {
     System.out.println(hmap.keySet());
     if (hmap.containsKey(key))
       dirtyKeys.add(key);
+    ByteBuffer checker = ByteBuffer.wrap(value);
+    checker.position(61);
+    System.out.println("chek me here");
+    System.out.println(checker.getInt());
     hmap.put(key, value);
 
     if (hmap.size() > this.capacity){
@@ -53,6 +58,10 @@ public class LRU {
   }
 
   public void flush(int key, byte[] value) throws IOException {
+    ByteBuffer checker = ByteBuffer.wrap(value);
+    System.out.println("onetwo");
+    checker.position(61);
+    System.out.println(checker.getInt());
     engine.writePage(value, key);
     dirtyKeys.remove(key);
   }
@@ -62,6 +71,11 @@ public class LRU {
     // flush each dirty page
     for (int key : keysToFlush) {
       if (hmap.containsKey(key)) {
+        byte[] thing = hmap.get(key);
+        ByteBuffer checker = ByteBuffer.wrap(thing);
+        checker.position(61);
+        System.out.println("this si something");
+        System.out.println(checker.getInt());;
         flush(key, hmap.get(key));
       }
     }
