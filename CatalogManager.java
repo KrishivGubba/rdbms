@@ -20,7 +20,7 @@ public class CatalogManager {
   public int numTables;
   public int tableOffset;
   public int versionInfo;
-  private Map<Integer, tableItem> tableMap;
+  public Map<Integer, tableItem> tableMap;
 
   public CatalogManager(LRU lru) throws IOException, KeyException {
     buffer = lru;
