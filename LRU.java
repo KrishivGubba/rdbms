@@ -33,13 +33,11 @@ public class LRU {
   }
 
   public void put(int key, byte[] value) throws KeyException, IOException {
-    System.out.println(hmap.keySet());
     if (hmap.containsKey(key))
       dirtyKeys.add(key);
     ByteBuffer checker = ByteBuffer.wrap(value);
     checker.position(61);
-    System.out.println("chek me here");
-    System.out.println(checker.getInt());
+
     hmap.put(key, value);
 
     if (hmap.size() > this.capacity){
@@ -59,9 +57,7 @@ public class LRU {
 
   public void flush(int key, byte[] value) throws IOException {
     ByteBuffer checker = ByteBuffer.wrap(value);
-    System.out.println("onetwo");
     checker.position(61);
-    System.out.println(checker.getInt());
     engine.writePage(value, key);
     dirtyKeys.remove(key);
   }
@@ -74,8 +70,7 @@ public class LRU {
         byte[] thing = hmap.get(key);
         ByteBuffer checker = ByteBuffer.wrap(thing);
         checker.position(61);
-        System.out.println("this si something");
-        System.out.println(checker.getInt());;
+
         flush(key, hmap.get(key));
       }
     }

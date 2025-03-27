@@ -36,10 +36,7 @@ public class CatalogManager {
     for (int i = 0; i < numTables; i++)
       tableMap.put(i, tableInfoGetter(i));
 
-    reader.position(65);
-    System.out.println(reader.getInt());
-    System.out.println(reader.getInt());
-    System.out.println(reader.getInt());
+
 //    System.out.println("these are the ids");
 //    System.out.println(tableMap.keySet());
 
@@ -145,6 +142,10 @@ public class CatalogManager {
     buffer.put(0, adminPage);
 
     numTables++;
+
+    //update other in memory stuff
+    tableItem addition = tableInfoGetter(numTables - 1);
+    tableMap.put(numTables - 1, addition);
 
     return numTables - 1;
   }
@@ -304,6 +305,10 @@ public class CatalogManager {
     return table;
   }
 
+  public void insertRow(int tableId, String values){
+
+  }
+
 //  [numPages, pageIds, infoString, numRows, columns, tableId, active, numColumns, tableName]
   public void insertRow(int tableId, Map<String, Object> values) throws KeyException, IOException {
     if (!tableMap.containsKey(tableId))
@@ -319,7 +324,6 @@ public class CatalogManager {
       if (!values.containsKey(col.get("name")))
         throw new InvalidKeyException("You did not pass in all the column values");
 
-    System.out.println(tableInfo.pageIds[0]);
     int latestPage = -1;
     int latestIdx = -1;
     for (int i = 0 ; i < tableInfo.pageIds.length; i++){
@@ -399,19 +403,15 @@ public class CatalogManager {
       // Write pages back to buffer
       ByteBuffer checkme = ByteBuffer.wrap(adminPage);
       checkme.position(tableOffset + 41);
-      System.out.println("time");
-      System.out.println(tableOffset + 41);
+
       ByteBuffer watch = ByteBuffer.wrap(adminPage);
       watch.position(tableOffset + 41);
-      System.out.println(watch.getInt());
       buffer.put(newPage, page);
       buffer.put(0, adminPage);
 
       adminBuffer.position(41 + tableOffset);
       int ro = adminBuffer.getInt();
-      System.out.println(tableOffset);
-      System.out.println("here");
-      System.out.println(ro);
+
     } else {
       // Code for adding to existing page will go here
       byte[] adminPage = buffer.get(0);
@@ -489,8 +489,7 @@ public class CatalogManager {
     }
 
 
-    System.out.println(tableInfo.columns);
-    System.out.println(tableMap.get(tableId).numRows);
+
 
   }
 
@@ -648,12 +647,13 @@ public class CatalogManager {
 //    LRU buffer = new LRU(10, engine);
 //    CatalogManager cat = new CatalogManager(buffer);
 //    cat.addTable("random", "id:INT,name:STRING,age:INT,salary:FLOAT,active:BOOLEAN");
-//    Map<String, Object> thing = new HashMap<>();
-//    thing.put("id",  11111);
-//    thing.put("name", "person");
-//    thing.put("age", 33);
-//    thing.put("salary",  110123);
-//    thing.put("active", false);
+    Map<String, Object> thing = new HashMap<>();
+    thing.put("id",  11111);
+    thing.put("name", "person");
+    thing.put("age", 33);
+    thing.put("salary",  110123);
+    thing.put("active", false);
+    System.out.println(thing);
 //    System.out.println(cat.tableInfoGetter(1).keySet());
 //    cat.insertRow(1, thing);
 //    System.out.println("hi");

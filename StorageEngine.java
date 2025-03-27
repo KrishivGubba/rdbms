@@ -49,7 +49,6 @@ public class StorageEngine {
       fillAdmin();
       if (!success)
         throw new IOException("Was not able to load metadata.");
-      System.out.println("Metadata exists");
     }
   }
 
@@ -70,7 +69,6 @@ public class StorageEngine {
     //read the magic num
     int readMagicNum = this.fileObject.readInt();
     if (readMagicNum != MAGICNUM){
-      System.out.println("The magic number is not matching");
       return false;
     }
 
@@ -163,7 +161,6 @@ public class StorageEngine {
 
   private int getOffset(int id){
     int x = METADATA_CAPACITY + id*pageSize;
-    System.out.println(x);
     return METADATA_CAPACITY + id*this.pageSize; //hardcode header size here.
   }
 
@@ -212,8 +209,6 @@ public class StorageEngine {
     this.fileObject.seek(offset);
     ByteBuffer checker = ByteBuffer.wrap(toDisk);
     checker.position(61);
-    System.out.println("this that tint");
-    System.out.println(checker.getInt());
     this.fileObject.write(toDisk);
   }
 
@@ -275,8 +270,6 @@ public class StorageEngine {
 
 //    thing.freePage(1);
 
-    System.out.println(thing.numPages);
-    System.out.println(thing.numFreePages);
 
     thing.readPage(1);
     thing.close();
