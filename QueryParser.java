@@ -1,8 +1,6 @@
 import java.io.IOException;
 import java.security.KeyException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 public class QueryParser {
 
@@ -11,7 +9,7 @@ public class QueryParser {
 
 
   public QueryParser() throws IOException, KeyException {
-    StorageEngine engine = new StorageEngine("newest");
+    StorageEngine engine = new StorageEngine("trialtesting");
     LRU buffer = new LRU(100, engine);
     manager = new CatalogManager(buffer);
     ourMap = new HashMap<>();
@@ -20,12 +18,12 @@ public class QueryParser {
     }
   }
 
-  public void NLPQuery(String query){
+  public void NLPQuery(String query) throws IOException, KeyException {
     //todo: add langchain logic?
     dealQuery(query);
   }
 
-  public void dealQuery(String query){
+  public void dealQuery(String query) throws IOException, KeyException {
     String trimmedQuery = query.trim();
 
     String firstWord = trimmedQuery.split("\\s+")[0].toLowerCase();
@@ -63,7 +61,8 @@ public class QueryParser {
 
   private void handleShow(String trimmedQuery) {
     String[] split = trimmedQuery.split(" ");
-
+    int key = ourMap.get(split[1]);
+    System.out.println(manager.tableMap.get(key).infoString);
   }
 
   private void handleDelete(String trimmedQuery) {
@@ -133,32 +132,146 @@ public class QueryParser {
       manager.insertRow(tableId, rowValues);
       System.out.println("Successfully inserted row.");
     }catch (Exception e){
+      System.out.println(e.getMessage());
       System.out.println("Was not able to insert row.");
     }
   }
 
-  private void handleSelect(String trimmedQuery) {
+  //format: select * from <tablename> where <condition>
+  //format: select col1,col2,col3 from <tablename> where <condition>
+  private void handleSelect(String trimmedQuery) throws IOException, KeyException {
+    try {
+      String[] split = trimmedQuery.split(" ");
+
+      // Extract requested columns
+      String columnsStr = split[1];
+      boolean selectAll = columnsStr.equals("*");
+
+      // Get list of requested columns if not selecting all
+      List<String> requestedColumns = new ArrayList<>();
+      if (!selectAll) {
+        String[] columnNames = columnsStr.split(",");
+        for (String col : columnNames) {
+          requestedColumns.add(col.trim());
+        }
+      }
+
+      // Extract table name
+      String tableName = split[3];
+      int id = ourMap.get(tableName);
+
+      // Get data
+      List<Map<String, Object>> output = manager.getAllRows(id);
+
+      if (output.isEmpty()) {
+        System.out.println("No rows in this table.");
+        return;
+      }
+
+      // Get column metadata
+      tableItem tableInfo = manager.tableMap.get(id);
+      ArrayList<HashMap<String, String>> allColumns = tableInfo.columns;
+
+      // Determine which columns to display
+      ArrayList<HashMap<String, String>> columnsToDisplay = new ArrayList<>();
+      if (selectAll) {
+        columnsToDisplay = allColumns;
+      } else {
+        // Filter columns based on user request
+        for (HashMap<String, String> column : allColumns) {
+          if (requestedColumns.contains(column.get("name"))) {
+            columnsToDisplay.add(column);
+          }
+        }
+      }
+
+      // Calculate column widths
+      Map<String, Integer> columnWidths = new HashMap<>();
+
+      // Initialize with column name lengths
+      for (HashMap<String, String> column : columnsToDisplay) {
+        String colName = column.get("name");
+        columnWidths.put(colName, colName.length());
+      }
+
+      // Update widths based on actual data
+      for (Map<String, Object> row : output) {
+        for (HashMap<String, String> column : columnsToDisplay) {
+          String colName = column.get("name");
+          Object value = row.get(colName);
+          if (value != null) {
+            int valueLength = value.toString().length();
+            columnWidths.put(colName, Math.max(columnWidths.get(colName), valueLength));
+          }
+        }
+      }
+
+      // Print header
+      System.out.println("Table: " + tableInfo.tableName);
+
+      // Print column names
+      for (HashMap<String, String> column : columnsToDisplay) {
+        String colName = column.get("name");
+        int width = columnWidths.get(colName);
+        System.out.printf("| %-" + width + "s ", colName);
+      }
+      System.out.println("|");
+
+      // Print separator
+      for (HashMap<String, String> column : columnsToDisplay) {
+        String colName = column.get("name");
+        int width = columnWidths.get(colName);
+        System.out.print("+-");
+        for (int i = 0; i < width; i++) {
+          System.out.print("-");
+        }
+        System.out.print("-");
+      }
+      System.out.println("+");
+
+      // Print rows
+      for (Map<String, Object> row : output) {
+        for (HashMap<String, String> column : columnsToDisplay) {
+          String colName = column.get("name");
+          Object value = row.get(colName);
+          int width = columnWidths.get(colName);
+          System.out.printf("| %-" + width + "s ", value);
+        }
+        System.out.println("|");
+      }
+    } catch (Exception e) {
+      System.out.println(e.getMessage());
+      System.out.println("something went wrong while selecting");
+    }
   }
 
-  public static void beginLoop(){
-
+  public static void beginLoop() throws IOException, KeyException {
     System.out.println("BadgerDB");
+    QueryParser whatnot =  new QueryParser();
+    Scanner scanner = new Scanner(System.in);
 
     while (true){
-      System.out.println("hi");
+      System.out.print(">> ");
+      String input = scanner.nextLine();
+      if (input.strip().equals("exit"))
+        break;
+      whatnot.dealQuery(input);
+
     }
+    whatnot.close();
   }
 
   public void close() throws IOException {
     manager.close();;
   }
 
+  //TODO: the info string is not being updated.
+  // also, the ourmap has to be updated upon table creation
   public static void main(String[] args) throws IOException, KeyException {
-    QueryParser whatnot =  new QueryParser();
+//    QueryParser whatnot =  new QueryParser();
 //    thing.dealQuery("CREATE table krishiv boolean yes, int age, float nincompoop");
-    whatnot.dealQuery("LIST");
-    whatnot.dealQuery("INSERT into krishiv values true, 10, 10.0");
-    whatnot.dealQuery("LIST");
+//    whatnot.dealQuery("show krishiv");
+//    whatnot.dealQuery("LIST");
 //    Map<String, Object> thing = new HashMap<>();
 //    thing.put("id",  11111);
 //    thing.put("name", "person");
@@ -166,8 +279,8 @@ public class QueryParser {
 //    thing.put("salary",  110123);
 //    thing.put("active", false);
 //    System.out.println(thing);
-
-    whatnot.close();
+      QueryParser.beginLoop();
+//    whatnot.close();
 }
 
 }

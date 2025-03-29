@@ -486,7 +486,9 @@ public class CatalogManager {
       buffer.put(latestPage, page);
       buffer.put(0, adminPage);
 
+      tableMap.put(tableId, tableInfoGetter(tableId));
     }
+
 
 
 
@@ -584,6 +586,87 @@ public class CatalogManager {
     int newFreeSpacePtr = freeSpacePtr + slotSize;
 
     return newFreeSpacePtr <= newRecordOffset;
+  }
+
+  public List<Map<String, Object>> getAllRows(int tableId) throws IOException, KeyException {
+    // Get table metadata
+    if (!tableMap.containsKey(tableId)) {
+      throw new InvalidKeyException("Invalid table id");
+    }
+
+    tableItem tableInfo = tableMap.get(tableId);
+    List<Map<String, Object>> results = new ArrayList<>();
+
+    // Iterate through all data pages for this table
+    for (int pageId : tableInfo.pageIds) {
+      if (pageId == -1) continue; // Skip empty page slots
+
+      // Get the page from buffer
+      byte[] page = buffer.get(pageId);
+      ByteBuffer pageBuffer = ByteBuffer.wrap(page);
+
+      // Get record count
+      int recordCount = pageBuffer.getInt(0);
+
+      // Iterate through slot directory
+      for (int i = 0; i < recordCount; i++) {
+        int slotOffset = 8 + (i * 8);
+        int recordOffset = pageBuffer.getInt(slotOffset);
+        int recordLength = pageBuffer.getInt(slotOffset + 4);
+
+        // Skip deleted records (marked with flag byte 0)
+        if (page[recordOffset] == 0) continue;
+
+        // Extract record data
+        byte[] recordData = new byte[recordLength];
+        System.arraycopy(page, recordOffset, recordData, 0, recordLength);
+
+        // Convert byte data to structured record
+        Map<String, Object> row = bytesToRecord(recordData, tableInfo.columns);
+        results.add(row);
+      }
+    }
+
+    return results;
+  }
+
+  // You'll need a bytesToRecord method that reverses your recordToBytes logic
+  private Map<String, Object> bytesToRecord(byte[] recordData, ArrayList<HashMap<String, String>> columns) {
+    Map<String, Object> record = new HashMap<>();
+    ByteBuffer buffer = ByteBuffer.wrap(recordData);
+
+    // Skip the status byte
+    buffer.get();
+
+    // Extract each field according to schema
+    for (HashMap<String, String> column : columns) {
+      String colName = column.get("name");
+      String type = column.get("type");
+
+      switch (type) {
+        case "INT":
+          record.put(colName, buffer.getInt());
+          break;
+
+        case "FLOAT":
+          record.put(colName, buffer.getFloat());
+          break;
+
+        case "BOOLEAN":
+          record.put(colName, buffer.get() != 0);
+          break;
+
+        case "STRING":
+          int stringLength = buffer.getInt();
+          byte[] stringBytes = new byte[stringLength];
+          buffer.get(stringBytes);
+          String value = new String(stringBytes, StandardCharsets.UTF_8);
+          record.put(colName, value);
+          break;
+      }
+    }
+
+    return record;
   }
 
 
