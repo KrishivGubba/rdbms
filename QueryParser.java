@@ -20,7 +20,63 @@ public class QueryParser {
 
   public void NLPQuery(String query) throws IOException, KeyException {
     //todo: add langchain logic?
-    dealQuery(query);
+    String prompt =
+        """
+        You are an expert at decoding natural language into queries for my custom database.
+        
+        These are the possible commands that a user can make to my database:
+        
+        PLEASE PAY ATTENTION TO THE SYNTAX, EVERY SPACE AND EVERY COMMA MATTERS
+        
+        - select:
+          format:
+            a) select * from <tablename>
+            b) select <colname1>,<colname2>,... from <tablename>
+          This is used to select data from a specific table.
+          Examples:
+            - "select * from employees"
+            - "select name,salary from employees"
+         
+        - insert:
+          format:
+            insert into <tablename> values (<val1>, <val2>, ...)
+          Every column within the table needs a corresponding value. There are no default values.
+          NOTE: if you are using STRING datatype, you do not have to put quotation marks around the
+          input.
+          NOTE: for the boolean type, the possibilities are true and false. Case matters.
+          Example:
+            - "insert into employees values 101, John Doe, Engineering, 75000, 2022-03-15"
+        
+        - create:
+          format:
+            create table <tablename> <dtype> <colname>, <dtype> <colname>, ...
+          The possible datatypes are BOOLEAN, INT, FLOAT and STRING
+          If only column names are provided, make an educated guess about appropriate datatypes.
+          Example:
+            - "create table employees INT id, STRING name, STRING department, INT salary, STRING hire_date"
+        
+        - list:
+          format:
+            list
+          This will list all tables in the database.
+        
+        - show:
+          format:
+            show <tablename>
+          This shows the structure (columns and datatypes) of a specific table.
+
+        Your task is to take natural language input and convert it to the appropriate database command using ONLY the formats specified above. If the request is ambiguous or can't be properly translated using the available commands, then your output must be EXIT.
+        
+        Always return ONLY the database command without additional explanation or text.
+        
+        Here is the natural language input from the user:
+        
+        
+        """;
+    prompt += query;
+    System.out.println(prompt);
+    //todo: add langchain logic...
+//    dealQuery(query);
   }
 
   public void dealQuery(String query) throws IOException, KeyException {
@@ -249,7 +305,7 @@ public class QueryParser {
     System.out.println("BadgerDB");
     QueryParser whatnot =  new QueryParser();
     Scanner scanner = new Scanner(System.in);
-
+    whatnot.NLPQuery("pup");
     while (true){
       System.out.print(">> ");
       String input = scanner.nextLine();
