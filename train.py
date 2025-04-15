@@ -4,6 +4,7 @@ from sklearn.model_selection import train_test_split
 import typing
 import json
 
+
 def prepShuffle(): 
     all_examples = {}
 
@@ -22,14 +23,13 @@ def splitandsave(array): #this should be the data array
 
     train, test = train_test_split(array, test_size=0.8, train_size=0.2, random_state=41)
 
-    with open("train_data.json", "w") as file:
+    with open("data/train_data.json", "w") as file:
         json.dump(train, file)
 
-    with open("test_data.json","w") as file:
+    with open("data/test_data.json","w") as file:
         json.dump(test, file)
     
+print('start')
 pairs = prepShuffle()
-
-print(pairs[0])
-    
-
+print(pairs[1])
+splitandsave(pairs)

@@ -305,7 +305,7 @@ public class QueryParser {
     System.out.println("BadgerDB");
     QueryParser whatnot =  new QueryParser();
     Scanner scanner = new Scanner(System.in);
-    whatnot.NLPQuery("pup");
+    // whatnot.NLPQuery("pup");
     while (true){
       System.out.print(">> ");
       String input = scanner.nextLine();
